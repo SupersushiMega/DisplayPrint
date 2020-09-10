@@ -46,6 +46,8 @@
 
 #define RELOAD_ENTPRELL 1 
 
+
+
 // Pins already defined in st7735.c
 extern int const DC;
 extern int const MOSI;
@@ -62,8 +64,41 @@ volatile uint8_t ms10,ms100,sec,min, entprell;
 
 char stringbuffer[20]; // buffer to store string 
 
+const uint8_t size = 128;
 
 ISR (TIMER1_COMPA_vect);
+
+volatile uint8_t ISR_zaehler = 0;
+volatile uint8_t ms = 0;
+volatile uint8_t second = 0;
+volatile uint8_t minute = 0;
+volatile uint8_t hour = 0;
+ISR (TIMER0_OVF_vect)
+{
+	TCNT0 = 0;
+	ISR_zaehler++;
+	if(ISR_zaehler == 12)
+	{
+		ms++;
+		ISR_zaehler = 0;
+		if (ms == 10)
+		{
+			second ++;
+			ms = 0;
+			if (second == 60)
+			{
+				minute ++;
+				second = 0;
+				if (minute == 60)
+				{
+					hour ++;
+					minute = 0;
+				}
+			}
+		}
+	}
+}//End of ISR
+void DrawPointer (uint8_t Number, uint8_t SizeOfRotation, uint8_t Radius, int16_t Color, uint8_t TrailWidth, int16_t TrailColor);
 
 int main(void)
 {
@@ -104,301 +139,87 @@ int main(void)
 
 	setup();
 	
-	const uint8_t size = 128;
-	
-	const uint8_t rectWidth = 20;
-	const uint8_t rectHeight = 4;
-	const uint8_t rectSpeed = 2;
-	
-	const uint8_t BlockDist = 1;
+	//Konfiguration Timer Overflow
+	//==================================================================
+	TCCR0A	= 0x00;
+	TCCR0B	= 0x04;
+	TIMSK0	|= (1 << TOIE0);
+	TIFR0 |= (1 << TOV0);
+	sei();
+	//==================================================================
 	
 	char buffer[20];
 	
-	uint8_t i = 0;	//throwaway variable for for loops
+	int8_t SetMode = 0;	//Variable used to change to SetMode;
+	int8_t TargetSec = 0;
+	int8_t TargetMin = 0;
+	int8_t TargetHour = 0;
 	
-	float tmp;	//Variable for storage of temporary data
-	
-	uint8_t isActive = 1; //Used to check if All Blocks have been destroyed
-	
-	uint8_t collided = 0;	//Variable to check if Ball has already collided with a Block
-	uint8_t collided_Platform = 0;	//Variable to check if the last collision with of the ball was with Rectangle
-	
-	uint8_t Frame = 0;	//Current Frame
-	uint8_t UpdateFrequency = 8; //The amount of Frames between DisplayUpdates
-	
-	uint8_t BlockGridSize[2];
-	BlockGridSize[0] =	10;	//Horizontal Size
-	BlockGridSize[1] =	5;	//Vertical Size
-	
-	uint8_t BlockSize[2];
-	BlockSize[0] = (size / BlockGridSize[0]);
-	BlockSize[1] = ((size / 2) / BlockGridSize[1]);
-	
-	uint8_t BlocksStatus[BlockGridSize[0]][BlockGridSize[1]];
-	
-	uint64_t Score = 0;	//Variable to store PlayerScore;
-	int x;
-	int y;
-	void BuildGrid(void)
-	{
-		for (x = 0; x < BlockGridSize[0]; x++)
-		{
-			for (y = 0; y < BlockGridSize[1]; y++)
-			{
-				fore = rand();
-				BlocksStatus[x][y] = 1;
-				MoveTo(x * (BlockSize[0]) + BlockDist, (size / 2) + (y * BlockSize[1]) + BlockDist);
-				FillRect(BlockSize[0] - BlockDist, BlockSize[1] - BlockDist);
-			}
-		}
-	}
-	BuildGrid();
-	int8_t RectX;
-	int8_t RectY;
-	
-	float BallMove[] = {0, -1};
-	uint16_t BallData[] = {size / 2, size / 2, 2, 2};	//Data for Ball {x Coordinate, y Coordinate, radius, thickness of outside line}
-	long double BallCoord[] = {size / 2, size / 2};
-	uint16_t BallLastRenderedPos[] = {size / 2, size / 2};	//The last rendered Position of the Ball 
-	
-	RectX = 0;
-	RectY = 10;
-	
-	uint8_t comboMult = 0; //The comboMutliplier
 	while (1)
 	{
-		Frame++;
-		//Input and RectangleClear
-		//==============================================================
-		fore = BLACK;
-		if (T3)
-		{
-			MoveTo(RectX - 1, RectY);
-			FillRect(2, rectHeight);
-			RectX += rectSpeed;
-		}
-		else if (T1)
-		{
-			MoveTo(RectX + rectWidth, RectY);
-			FillRect(2, rectHeight);
-			RectX -= rectSpeed;
-		}
 		
-		//==============================================================
-		
-		//Autoplay
-		//==============================================================
-		if (1)
+		while (T2)
 		{
-			if(BallData[0] > (RectX + (rectWidth / 2)))
-			{
-				MoveTo(RectX - 1, RectY);
-				FillRect(2, rectHeight);
-				RectX += rectSpeed;
-			}
-			else
-			{
-				MoveTo(RectX + rectWidth, RectY);
-				FillRect(2, rectHeight);
-				RectX -= rectSpeed;
-			}
-		}
-		
-		//==============================================================
-		
-		//Ball movement
-		//==============================================================
-		BallCoord[0] += BallMove[0];
-		BallCoord[1] += BallMove[1];
-		BallData[0] = BallCoord[0];
-		BallData[1] = BallCoord[1];
-		//==============================================================
-		
-		//Check if Rectangle is Coliding with Wall
-		//==============================================================
-		if (RectX > size - rectWidth)
-		{
-			RectX =	size - rectWidth;
-		}
-		
-		else if (RectX <= 0)
-		{
-			RectX = 0;
-		}
-		//==============================================================
-		
-		//Check if Ball is Coliding with Wall
-		//==============================================================
-		if (BallData[0] > size - BallData[2])
-		{
-			BallData[0] = size - BallData[2] - 3;
-			BallCoord[0] = size - BallData[2] - 3;
-			BallMove[0] = -BallMove[0];
-			collided_Platform = 0;
-		}
-		else if(BallData[0] < BallData[2])
-		{
-			BallData[0] = BallData[2];
-			BallCoord[0] = BallData[2];
-			BallMove[0] = -BallMove[0];
-			collided_Platform = 0;
-		}
-		//==============================================================
-		
-		//Check if Ball is Coliding with Roof
-		//==============================================================
-		if (BallData[1] > size - BallData[2])
-		{
-			BallMove[1] = -BallMove[1];
-			collided_Platform = 0;
-		}
-		//==============================================================
-		
-		//Check if Ball is Coliding with Rectangle
-		//==============================================================
-		if ((BallData[1] < (RectY + rectHeight + BallData[2]) && (BallData[0] < (rectWidth + RectX)) && (BallData[0] > RectX)) && collided_Platform != 1)
-		{
-			tmp = ((BallCoord[0] - RectX) / rectWidth);
-			if (BallMove[0] < 0)
-			{
-				BallMove[0] = tmp * 2 * -1; 
-			}
-			
-			else if (BallMove[0] > 0)
-			{
-				BallMove[0] = tmp * 2; 
-			}
-			else
-			{
-				BallMove[0] = 0.1;
-			}
-			BallMove[1] = -BallMove[1];
-			
-			if(BallMove[0] > 1)
-			{
-				BallMove[0] = 1;
-			}
-			
-			else if(BallMove[0] < -1)
-			{
-				BallMove[0] = -1;
-			}
-			collided_Platform = 1;
-			if (isActive == 0)
-			{
-				BuildGrid();
-			}
-			comboMult = 0;
-		}
-		//==============================================================
-		
-		//Check if Ball is Coliding Floor and if true reset Game
-		//==============================================================
-		if (BallData[1] < 3)
-		{
-			BallData[0] = size / 2;
-			BallData[1] = (size / 2) - 10;
-			BallCoord[0] = size / 2;
-			BallCoord[1] = (size / 2) - 10;
-			BallMove[0] = 0;
-			BallMove[1] = -1;
-			Score = 0;
+			second = 0;
+			minute = 0;
+			hour = 0;
 			ClearDisplay();
-			BuildGrid();
-			collided_Platform = 0;
 		}
+		//~ while (SetMode == 1)
+		//~ {
+			
+		//~ }
+		fore = WHITE;
+		MoveTo(0,0);
 		//==============================================================
 		
-		//Check if Ball is Coliding with Block
+		//Hour Output
 		//==============================================================
-		collided = 0;
-		isActive = 0;
-		for (y = 0; y < BlockGridSize[1]; y++)
+		if (hour < 10)
 		{
-			for (x = 0; x < BlockGridSize[0]; x++)
-			{
-				MoveTo(x * (BlockSize[0]) + BlockDist, (size / 2) + (y * BlockSize[1]) + BlockDist);
-				if (BlocksStatus[x][y] == 1)
-				{
-					if (collided == 0)
-					{
-						fore = BLACK;
-						//Check if Ball is Coliding with Block horizontal side
-						//==============================================================
-						if ((BallData[0] + BallData[2]) > (x * BlockSize[0]) && (BallData[0] - BallData[2]) < ((x * BlockSize[0]) + BlockSize[0]) && (((BallData[1] - (size / 2)) == (y * BlockSize[1])) || ((BallData[1] - (size / 2)) == ((y * BlockSize[1]) + BlockSize[1]))))
-						{
-							comboMult++;
-							BlocksStatus[x][y] = 0;
-							BallMove[1] = -BallMove[1];
-							FillRect(BlockSize[0] - BlockDist, BlockSize[1] - BlockDist);
-							collided = 1;
-							collided_Platform = 0;
-							Score += 1 * comboMult;
-						}
-						//==============================================================
-		
-						//Check if Ball is Coliding with Block vertical side
-						//==============================================================
-						else if ((BallData[0] + BallData[2] == (x * BlockSize[0]) || (BallData[0] - BallData[2] == ((x * BlockSize[0]) + BlockSize[0]))) && (((BallData[1] - (size / 2)) > (y * BlockSize[1])) && ((BallData[1] - (size / 2)) < ((y * BlockSize[1]) + BlockSize[1]))))
-						{
-							comboMult++;
-							BlocksStatus[x][y] = 0;
-							BallMove[0] = -BallMove[0];
-							FillRect(BlockSize[0] - BlockDist, BlockSize[1] - BlockDist);
-							collided = 1;
-							collided_Platform = 0;
-							Score += 1 * comboMult;
-						}
-						//==============================================================
-						
-						//Check if Ball is inside Block
-						//==============================================================
-						else if ((BallData[0]) > (x * BlockSize[0]) && (BallData[0]) < ((x * BlockSize[0]) + BlockSize[0]) && (((BallData[1] - (size / 2)) > (y * BlockSize[1])) && ((BallData[1] - (size / 2)) < ((y * BlockSize[1]) + BlockSize[1]))))
-						{
-							comboMult++;
-							BlocksStatus[x][y] = 0;
-							BallMove[0] = -BallMove[0];
-							FillRect(BlockSize[0] - BlockDist, BlockSize[1] - BlockDist);
-							collided = 1;
-							collided_Platform = 0;
-							Score += 1 * comboMult;
-						}
-						//==============================================================
-					}
-					isActive = 1;
-				}
-			}
+			sprintf(buffer, "0%d:", hour);
+			PlotString(buffer);
 		}
-		//==============================================================
-
-		
-		//DisplayUpdate
-		//==============================================================
-		
-		if (Frame % UpdateFrequency == 0)
+		else
 		{
-			Frame = 0;
-			for (i = 0; i < BallData[3]; i++)
-			{
-				fore = BLACK; // Black
-				glcd_draw_circle(BallLastRenderedPos[0], BallLastRenderedPos[1], BallData[2] - i);
-				fore = WHITE; // White
-				glcd_draw_circle(BallData[0], BallData[1], BallData[2] - i);
-			}
-			BallLastRenderedPos[0] = BallData[0];
-			BallLastRenderedPos[1] = BallData[1];
-			
-			fore = WHITE; // White
-			
-			MoveTo(RectX,RectY);
-			FillRect(rectWidth, rectHeight);
-			
-			MoveTo(10,0);
-			fore = RED;
-			sprintf(buffer, "Score = %d", Score);
+			sprintf(buffer, "%d:", hour);
 			PlotString(buffer);
 		}
 		//==============================================================
+		
+		//Minute Output
+		//==============================================================
+		if (minute < 10)
+		{
+			sprintf(buffer, "0%d:", minute);
+			PlotString(buffer);
+		}
+		else
+		{
+			sprintf(buffer, "%d:", minute);
+			PlotString(buffer);
+		}
+		//==============================================================
+		
+		//Second Output
+		//==============================================================
+		if (second < 10)
+		{
+			sprintf(buffer, "0%d", second);
+			PlotString(buffer);
+		}
+		else
+		{
+			sprintf(buffer, "%d", second);
+			PlotString(buffer);
+		}
+		//==============================================================
+		
+		//Pointer Drawing
+		//==============================================================
+		DrawPointer(second, 60, 40, WHITE, 4, RED);
+		DrawPointer(minute, 60, 30, WHITE, 4, GREEN);
+		DrawPointer(hour, 24, 20, WHITE, 4, BLUE);
 	}
 	
 	
@@ -428,6 +249,52 @@ int main(void)
 
 	}//end of for()
 }//end of main
+
+void DrawPointer (uint8_t Number, uint8_t SizeOfRotation, uint8_t Radius, int16_t Color, uint8_t TrailWidth, int16_t TrailColor)
+{
+		float radian;
+		MoveTo(size / 2, size / 2);
+		fore = Color;
+		radian = ((Number * (360 / SizeOfRotation)) + 90) * (M_PI / 180);
+		DrawTo((size / 2) - cos(radian) * Radius, ((size / 2) + sin(radian) * Radius));
+		
+		radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+		MoveTo(size / 2, size / 2);
+		fore = BLACK;
+		DrawTo((size / 2) - cos(radian) * Radius, ((size / 2) + sin(radian) * Radius));
+		
+		if (TrailWidth != 0)
+		{
+			radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+			fore = TrailColor;
+			int8_t i;
+			if (Number % SizeOfRotation != 0)
+			{
+				for (i = 0 - floor(TrailWidth / 2); i != round(TrailWidth / 2); i++)
+				{
+					radian = (((Number) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+					MoveTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
+					radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+					DrawTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
+				}
+			}
+			
+			else
+			{
+				fore = BLACK;
+				for (Number = 0; Number != SizeOfRotation; Number++)
+				{
+					for (i = 0 - floor(TrailWidth / 2); i != round(TrailWidth / 2); i++)
+					{
+						radian = (((Number) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+						MoveTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
+						radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+						DrawTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
+					}
+				}
+			}
+		}
+}
 
 ISR (TIMER1_COMPA_vect)
 {
