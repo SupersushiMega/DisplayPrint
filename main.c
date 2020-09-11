@@ -46,8 +46,6 @@
 
 #define RELOAD_ENTPRELL 1 
 
-
-
 // Pins already defined in st7735.c
 extern int const DC;
 extern int const MOSI;
@@ -73,6 +71,7 @@ volatile uint8_t ms = 0;
 volatile uint8_t second = 0;
 volatile uint8_t minute = 0;
 volatile uint8_t hour = 0;
+volatile uint8_t CountUp = 1;
 ISR (TIMER0_OVF_vect)
 {
 	TCNT0 = 0;
@@ -83,22 +82,43 @@ ISR (TIMER0_OVF_vect)
 		ISR_zaehler = 0;
 		if (ms == 10)
 		{
-			second ++;
-			ms = 0;
-			if (second == 60)
+			if (CountUp == 1)
 			{
-				minute ++;
-				second = 0;
-				if (minute == 60)
+				if (ms == 10)
 				{
-					hour ++;
-					minute = 0;
+					second ++;
+					ms = 0;
+					if (second == 60)
+					{
+						minute ++;
+						second = 0;
+						if (minute == 60)
+						{
+							hour ++;
+							minute = 0;
+						}
+					}
+				}
+			}
+			else
+			{
+				second --;
+				ms = 0;
+				if (second == 255)
+				{
+					minute --;
+					second = 59;
+					if (minute == 255)
+					{
+						hour --;
+						minute = 59;
+					}
 				}
 			}
 		}
 	}
 }//End of ISR
-void DrawPointer (uint8_t Number, uint8_t SizeOfRotation, uint8_t Radius, int16_t Color, uint8_t TrailWidth, int16_t TrailColor);
+uint8_t DrawPointer (uint8_t Number, uint8_t SizeOfRotation, uint8_t Radius, int16_t Color, uint8_t TrailWidth, int16_t TrailColor, int8_t DiffToLast);
 
 int main(void)
 {
@@ -148,100 +168,347 @@ int main(void)
 	sei();
 	//==================================================================
 	
+	enum {START, CHOICE, TIMER, COUNTDOWNSET, COUNTDOWN};
+	
+	uint8_t state = START;
+	
+	uint16_t count1;	//Variable used for Counting in for loops
+	uint16_t count2;	//Variable used for Counting in for loops
+	
 	char buffer[20];
 	
-	int8_t SetMode = 0;	//Variable used to change to SetMode;
-	int8_t TargetSec = 0;
-	int8_t TargetMin = 0;
-	int8_t TargetHour = 0;
+	uint8_t BoxSize;
+	
+	uint8_t SetPos = 0;		//Variable used to select which Part of StartTime is being edited
+	uint8_t StartTime[] = {0, 0, 0};	//Countdown Start Time (sec, min, hour)
+	
+	uint8_t LastSec = 0;
+	uint8_t LastMin = 0;
+	uint8_t LastHour = 0;
 	
 	while (1)
 	{
-		
-		while (T2)
+		switch(state)
 		{
-			second = 0;
-			minute = 0;
-			hour = 0;
-			ClearDisplay();
-		}
-		//~ while (SetMode == 1)
-		//~ {
+			case START:
+			{
+				MoveTo(0, size);
+				for (count1 = 0; count1 != size; count1++)
+				{
+					for (count2 = 0; count2 != size; count2++)
+					{
+						fore = Colour(count1* 2, 255 - (count1 + count2), count2 * 2);
+						PlotPoint(count1, count2);
+					}
+				}
+				fore = White;
+				MoveTo(0,20);
+				scale = 3;
+				PlotString("Welcome");
+				MoveTo(0,10);
+				scale = 1;
+				PlotString("Push any button to");
+				MoveTo(0,0);
+				PlotString("continue");
+				while(state == START || T1 || T2 || T3)
+				{
+					if(T1 || T2 || T3)
+					{
+						state = CHOICE;
+					}
+				}
+				break;
+			}
 			
-		//~ }
-		fore = WHITE;
-		MoveTo(0,0);
-		//==============================================================
-		
-		//Hour Output
-		//==============================================================
-		if (hour < 10)
-		{
-			sprintf(buffer, "0%d:", hour);
-			PlotString(buffer);
+			case CHOICE:
+			{
+				ClearDisplay();
+				count2 = 0;
+				BoxSize = 30;
+				for (count1 = ((size/3) / 4); count1 <= size; count1 += (size/3))
+				{
+					fore = WHITE;
+					switch(count2)
+					{
+						case 0:
+						{
+							MoveTo(BoxSize + 2, count1);
+							PlotString("Timer");
+							fore = BLUE;
+							break;
+						}
+						
+						case 1:
+						{
+							MoveTo(BoxSize + 2, count1);
+							PlotString("Countdown");
+							fore = GREEN;
+							break;
+						}
+						
+						case 2:
+						{
+							MoveTo(BoxSize + 2, count1);
+							PlotString("Back");
+							fore = YELLOW;
+							break;
+						}
+					}
+					MoveTo(0, count1);
+					FillRect(BoxSize, BoxSize);
+					count2++;
+				}
+				
+				while(state == CHOICE || T1 || T2 || T3)
+				{
+					if(T1)
+					{
+						ClearDisplay();
+						state = TIMER;
+					}
+					
+					else if(T2)
+					{
+						ClearDisplay();
+						state = COUNTDOWNSET;
+					}
+					
+					else if(T3)
+					{
+						state = START;
+					}
+				}
+				break;
+			}
+			
+			case TIMER:
+			{
+				CountUp = 1;
+				second = 0;
+				minute = 0;
+				hour = 0;
+				LastSec = 0;
+				LastMin = 0;
+				LastHour = 0;
+				ClearDisplay();
+				while (!T3)
+				{
+					if (T1)
+					{
+						second = 0;
+						minute = 0;
+						hour = 0;
+						ClearDisplay();
+					}
+					fore = WHITE;
+					MoveTo(0,0);
+					//==============================================================
+					
+					//Hour Output
+					//==============================================================
+					if (hour < 10)
+					{
+						sprintf(buffer, "0%d:", hour);
+						PlotString(buffer);
+					}
+					else
+					{
+						sprintf(buffer, "%d:", hour);
+						PlotString(buffer);
+					}
+					//==============================================================
+					
+					//Minute Output
+					//==============================================================
+					if (minute < 10)
+					{
+						sprintf(buffer, "0%d:", minute);
+						PlotString(buffer);
+					}
+					else
+					{
+						sprintf(buffer, "%d:", minute);
+						PlotString(buffer);
+					}
+					//==============================================================
+					
+					//Second Output
+					//==============================================================
+					if (second < 10)
+					{
+						sprintf(buffer, "0%d", second);
+						PlotString(buffer);
+					}
+					else
+					{
+						sprintf(buffer, "%d", second);
+						PlotString(buffer);
+					}
+					//==============================================================
+					
+					//Pointer Drawing
+					//==============================================================
+					LastSec = DrawPointer(second, 60, 40, WHITE, 2, RED, second - LastSec);
+					LastMin = DrawPointer(minute, 60, 30, WHITE, 2, GREEN, minute - LastMin);
+					LastHour = DrawPointer(hour, 24, 20, WHITE, 2, BLUE, hour - LastHour);
+				}
+				state = CHOICE;
+				break;
+			}
+			
+			case COUNTDOWNSET:
+			{
+				fore = RED;
+				MoveTo(size / 2, size / 2);
+				scale = 3;
+				PlotString("SET MODE");
+				
+				fore = WHITE;
+				scale = 1;
+				MoveTo(0, 0);
+				//Hour Output
+				//==============================================================
+				if (StartTime[2] < 10)
+				{
+					sprintf(buffer, "0%d:", StartTime[2]);
+					PlotString(buffer);
+				}
+				else
+				{
+					sprintf(buffer, "%d:", StartTime[2]);
+					PlotString(buffer);
+				}
+				//==============================================================
+				
+				//Minute Output
+				//==============================================================
+				if (StartTime[1] < 10)
+				{
+					sprintf(buffer, "0%d:", StartTime[1]);
+					PlotString(buffer);
+				}
+				else
+				{
+					sprintf(buffer, "%d:", StartTime[1]);
+					PlotString(buffer);
+				}
+				//==============================================================
+				
+				//Second Output
+				//==============================================================
+				if (StartTime[0] < 10)
+				{
+					sprintf(buffer, "0%d", StartTime[0]);
+					PlotString(buffer);
+				}
+				else
+				{
+					sprintf(buffer, "%d", StartTime[0]);
+					PlotString(buffer);
+				}
+				//==============================================================
+				if (T1)
+				{
+					StartTime[SetPos]++;
+				}
+				
+				else if (T2)
+				{
+					SetPos++;
+				}
+				
+				else if (T3)
+				{
+					StartTime[SetPos]--;
+				}
+				
+				if (SetPos > 2)
+				{
+					state = COUNTDOWN;
+				}
+				
+				break;
+			}
+			
+			case COUNTDOWN:
+			{
+				CountUp = 0;
+				second = StartTime[0];
+				minute = StartTime[1];
+				hour = StartTime[2];
+				
+				LastSec = StartTime[0];
+				LastMin = StartTime[1];
+				LastHour = StartTime[2];
+				
+				ClearDisplay();
+				while (!T3)
+				{
+					if (T1)
+					{
+						state = COUNTDOWNSET;
+						SetPos = 0;
+						ClearDisplay();
+					}
+					fore = WHITE;
+					MoveTo(0,0);
+					//==============================================================
+					
+					//Hour Output
+					//==============================================================
+					if (hour < 10)
+					{
+						sprintf(buffer, "0%d:", hour);
+						PlotString(buffer);
+					}
+					else
+					{
+						sprintf(buffer, "%d:", hour);
+						PlotString(buffer);
+					}
+					//==============================================================
+					
+					//Minute Output
+					//==============================================================
+					if (minute < 10)
+					{
+						sprintf(buffer, "0%d:", minute);
+						PlotString(buffer);
+					}
+					else
+					{
+						sprintf(buffer, "%d:", minute);
+						PlotString(buffer);
+					}
+					//==============================================================
+					
+					//Second Output
+					//==============================================================
+					if (second < 10)
+					{
+						sprintf(buffer, "0%d", second);
+						PlotString(buffer);
+					}
+					else
+					{
+						sprintf(buffer, "%d", second);
+						PlotString(buffer);
+					}
+					//~ //==============================================================
+					
+					//~ //Pointer Drawing
+					//~ //==============================================================
+					LastSec = DrawPointer(second, 60, 40, WHITE, 2, RED, second - LastSec);
+					LastMin = DrawPointer(minute, 60, 30, WHITE, 2, GREEN, minute - LastMin);
+					LastHour = DrawPointer(hour, 24, 20, WHITE, 2, BLUE, hour - LastHour);
+				}
+				state = CHOICE;
+				break;
+			}
 		}
-		else
-		{
-			sprintf(buffer, "%d:", hour);
-			PlotString(buffer);
-		}
-		//==============================================================
-		
-		//Minute Output
-		//==============================================================
-		if (minute < 10)
-		{
-			sprintf(buffer, "0%d:", minute);
-			PlotString(buffer);
-		}
-		else
-		{
-			sprintf(buffer, "%d:", minute);
-			PlotString(buffer);
-		}
-		//==============================================================
-		
-		//Second Output
-		//==============================================================
-		if (second < 10)
-		{
-			sprintf(buffer, "0%d", second);
-			PlotString(buffer);
-		}
-		else
-		{
-			sprintf(buffer, "%d", second);
-			PlotString(buffer);
-		}
-		//==============================================================
-		
-		//Pointer Drawing
-		//==============================================================
-		DrawPointer(second, 60, 40, WHITE, 4, RED);
-		DrawPointer(minute, 60, 30, WHITE, 4, GREEN);
-		DrawPointer(hour, 24, 20, WHITE, 4, BLUE);
 	}
-	
-	
-	//~ fore = WHITE; // White
-	//~ scale = 2;
-	//~ MoveTo(40,80);
-	//~ fore = GREEN;
-	//~ FillRect(40,40);
-	//~ MoveTo(80,80);
-	//~ fore = RED;
-	//~ FillRect(40,40);
-	
-	//~ MoveTo(40,40);
-	//~ fore = YELLOW;
-	//~ FillRect(40,40);
-	//~ MoveTo(80,40);
-	//~ fore = BLUE;
-	//~ FillRect(40,40);
-	
-	//~ fore=WHITE;
-	//~ MoveTo(10,10);
-	//~ PlotText(PSTR("Text"));
+		
+		
 
 	  
 	for (;;)
@@ -250,15 +517,17 @@ int main(void)
 	}//end of for()
 }//end of main
 
-void DrawPointer (uint8_t Number, uint8_t SizeOfRotation, uint8_t Radius, int16_t Color, uint8_t TrailWidth, int16_t TrailColor)
+uint8_t DrawPointer (uint8_t Number, uint8_t SizeOfRotation, uint8_t Radius, int16_t Color, uint8_t TrailWidth, int16_t TrailColor, int8_t DiffToLast)
 {
-		float radian;
-		MoveTo(size / 2, size / 2);
-		fore = Color;
-		radian = ((Number * (360 / SizeOfRotation)) + 90) * (M_PI / 180);
-		DrawTo((size / 2) - cos(radian) * Radius, ((size / 2) + sin(radian) * Radius));
-		
-		radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+	float radian;
+	MoveTo(size / 2, size / 2);	//Move to the middle of the display
+	fore = Color;
+	radian = ((Number * (360 / SizeOfRotation)) + 90) * (M_PI / 180);	//calculate
+	DrawTo((size / 2) - cos(radian) * Radius, ((size / 2) + sin(radian) * Radius));
+	
+	if(DiffToLast != 0)
+	{	
+		radian = (((Number - DiffToLast) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
 		MoveTo(size / 2, size / 2);
 		fore = BLACK;
 		DrawTo((size / 2) - cos(radian) * Radius, ((size / 2) + sin(radian) * Radius));
@@ -266,34 +535,51 @@ void DrawPointer (uint8_t Number, uint8_t SizeOfRotation, uint8_t Radius, int16_
 		if (TrailWidth != 0)
 		{
 			radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
-			fore = TrailColor;
 			int8_t i;
-			if (Number % SizeOfRotation != 0)
+			int8_t j;
+			if (Number % SizeOfRotation != 0 || 1)
 			{
-				for (i = 0 - floor(TrailWidth / 2); i != round(TrailWidth / 2); i++)
-				{
-					radian = (((Number) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
-					MoveTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
-					radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
-					DrawTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
-				}
-			}
-			
-			else
-			{
-				fore = BLACK;
-				for (Number = 0; Number != SizeOfRotation; Number++)
+				for (j = 0; j != SizeOfRotation; j++)
 				{
 					for (i = 0 - floor(TrailWidth / 2); i != round(TrailWidth / 2); i++)
 					{
-						radian = (((Number) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+						if (j <= Number)
+						{
+							fore = TrailColor;
+						}
+						else
+						{
+							fore = BLACK;
+						}
+						radian = (((j) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
 						MoveTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
-						radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+						radian = (((j - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
 						DrawTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
 					}
 				}
+					//~ radian = (((Number) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+					//~ MoveTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
+					//~ radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+					//~ DrawTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
 			}
 		}
+			
+			//~ else
+			//~ {
+				//~ fore = BLACK;
+				//~ for (Number = 0; Number != SizeOfRotation; Number++)
+				//~ {
+					//~ for (i = 0 - floor(TrailWidth / 2); i != round(TrailWidth / 2); i++)
+					//~ {
+						//~ radian = (((Number) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+						//~ MoveTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
+						//~ radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
+						//~ DrawTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
+					//~ }
+				//~ }
+			//~ }
+	}
+	return Number;
 }
 
 ISR (TIMER1_COMPA_vect)
