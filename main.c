@@ -72,53 +72,57 @@ volatile uint8_t second = 0;
 volatile uint8_t minute = 0;
 volatile uint8_t hour = 0;
 volatile uint8_t CountUp = 1;
+volatile int8_t IsPaused = 0;
 ISR (TIMER0_OVF_vect)
 {
-	TCNT0 = 0;
-	ISR_zaehler++;
-	if(ISR_zaehler == 12)
+	if (IsPaused == 0)
 	{
-		ms++;
-		ISR_zaehler = 0;
-		if (ms == 10)
+		TCNT0 = 0;
+		ISR_zaehler++;
+		if(ISR_zaehler == 12)
 		{
-			if (CountUp == 1)
+			ms++;
+			ISR_zaehler = 0;
+			if (ms == 10)
 			{
-				if (ms == 10)
+				if (CountUp == 1)
 				{
-					second ++;
-					ms = 0;
-					if (second == 60)
+					if (ms == 10)
 					{
-						minute ++;
-						second = 0;
-						if (minute == 60)
+						second ++;
+						ms = 0;
+						if (second == 60)
 						{
-							hour ++;
-							minute = 0;
+							minute ++;
+							second = 0;
+							if (minute == 60)
+							{
+								hour ++;
+								minute = 0;
+							}
 						}
 					}
 				}
-			}
-			else
-			{
-				second --;
-				ms = 0;
-				if (second == 255)
+				else
 				{
-					minute --;
-					second = 59;
-					if (minute == 255)
+					second --;
+					ms = 0;
+					if (second == 255)
 					{
-						hour --;
-						minute = 59;
+						minute --;
+						second = 59;
+						if (minute == 255)
+						{
+							hour --;
+							minute = 59;
+						}
 					}
 				}
 			}
 		}
 	}
 }//End of ISR
-uint8_t DrawPointer (uint8_t Number, uint8_t SizeOfRotation, uint8_t Radius, int16_t Color, uint8_t TrailWidth, int16_t TrailColor, int8_t DiffToLast);
+uint8_t DrawPointer (uint16_t Number, uint16_t SizeOfRotation, uint8_t Radius, int16_t Color, uint8_t TrailWidth, int16_t TrailColor, int8_t DiffToLast);
 
 int main(void)
 {
@@ -186,10 +190,16 @@ int main(void)
 	uint8_t LastMin = 0;
 	uint8_t LastHour = 0;
 	
+	uint8_t isPushed = 0;
+	
 	while (1)
 	{
 		switch(state)
 		{
+			//==========================================================
+			
+			//Start Screen
+			//==========================================================
 			case START:
 			{
 				MoveTo(0, size);
@@ -219,7 +229,10 @@ int main(void)
 				}
 				break;
 			}
+			//==========================================================
 			
+			//Selection Screen
+			//==========================================================
 			case CHOICE:
 			{
 				ClearDisplay();
@@ -271,6 +284,10 @@ int main(void)
 					{
 						ClearDisplay();
 						state = COUNTDOWNSET;
+						SetPos = 0;
+						StartTime[0] = 0;
+						StartTime[1] = 0;
+						StartTime[2] = 0;
 					}
 					
 					else if(T3)
@@ -280,9 +297,43 @@ int main(void)
 				}
 				break;
 			}
+			//==========================================================
 			
+			//Timer Mode
+			//==========================================================
 			case TIMER:
 			{
+				//Draw Background
+				//======================================================
+				MoveTo(0, size);
+				for (count1 = 0; count1 != size; count1++)
+				{
+					for (count2 = 0; count2 != size; count2++)
+					{
+						fore = Colour(count2 * 8, 0, 0);
+						PlotPoint(count1, count2);
+					}
+				}
+				for (count1 = 0; count1 != 180; count1++)
+				{
+					DrawPointer(count1, 360, 40, BLACK, 0, BLACK, -1);
+					DrawPointer(360 - count1, 360, 40, BLACK, 0, BLACK, 1);
+				}
+				for (count1 = 15; count1 != 47; count1++)
+				{
+					fore = BLACK;
+					glcd_draw_circle(size / 2, size / 2, count1);
+				}
+				
+				for (count1 = 47; count1 != 42; count1--)
+				{
+					fore = Colour(180, 166, 166);
+					glcd_draw_circle(size / 2, size / 2, count1);
+				}
+				//======================================================
+			
+				//Reset Values
+				//======================================================
 				CountUp = 1;
 				second = 0;
 				minute = 0;
@@ -290,22 +341,35 @@ int main(void)
 				LastSec = 0;
 				LastMin = 0;
 				LastHour = 0;
-				ClearDisplay();
+				//======================================================
 				while (!T3)
 				{
-					if (T1)
+					//Inputs
+					//==================================================
+					if (T1)	//Reset Timer
 					{
 						second = 0;
 						minute = 0;
 						hour = 0;
-						ClearDisplay();
 					}
+					else if (T2 && isPushed == 0)	//Pause/Unpause
+					{
+						isPushed = 1;
+						IsPaused = !IsPaused;
+					}
+					else if(!T2 && isPushed == 1)	//Reset isPushed
+					{
+						isPushed = 0;
+					}
+					//==================================================
+					
+					//Number Output
+					//==================================================
 					fore = WHITE;
 					MoveTo(0,0);
-					//==============================================================
 					
 					//Hour Output
-					//==============================================================
+					//==================================================
 					if (hour < 10)
 					{
 						sprintf(buffer, "0%d:", hour);
@@ -316,10 +380,10 @@ int main(void)
 						sprintf(buffer, "%d:", hour);
 						PlotString(buffer);
 					}
-					//==============================================================
+					//==================================================
 					
 					//Minute Output
-					//==============================================================
+					//==================================================
 					if (minute < 10)
 					{
 						sprintf(buffer, "0%d:", minute);
@@ -330,10 +394,10 @@ int main(void)
 						sprintf(buffer, "%d:", minute);
 						PlotString(buffer);
 					}
-					//==============================================================
+					//==================================================
 					
 					//Second Output
-					//==============================================================
+					//==================================================
 					if (second < 10)
 					{
 						sprintf(buffer, "0%d", second);
@@ -344,29 +408,38 @@ int main(void)
 						sprintf(buffer, "%d", second);
 						PlotString(buffer);
 					}
-					//==============================================================
+					//==================================================
 					
 					//Pointer Drawing
-					//==============================================================
-					LastSec = DrawPointer(second, 60, 40, WHITE, 2, RED, second - LastSec);
-					LastMin = DrawPointer(minute, 60, 30, WHITE, 2, GREEN, minute - LastMin);
+					//==================================================
+					LastSec = DrawPointer(second, 59, 40, WHITE, 2, RED, second - LastSec);
+					LastMin = DrawPointer(minute, 59, 30, WHITE, 2, GREEN, minute - LastMin);
 					LastHour = DrawPointer(hour, 24, 20, WHITE, 2, BLUE, hour - LastHour);
+					//==============================================================
 				}
 				state = CHOICE;
 				break;
 			}
+			//==========================================================
 			
+			//Countdown Set Mode
+			//==========================================================
 			case COUNTDOWNSET:
 			{
+				//Draw SET MODE
+				//======================================================
 				fore = RED;
-				MoveTo(size / 2, size / 2);
-				scale = 3;
+				MoveTo(0, size / 2);
+				scale = 2.5;
 				PlotString("SET MODE");
+				//======================================================
 				
+				//Number Output
+				//======================================================
 				fore = WHITE;
 				scale = 1;
 				MoveTo(0, 0);
-				//Hour Output
+				//Start Hour Output
 				//==============================================================
 				if (StartTime[2] < 10)
 				{
@@ -380,7 +453,7 @@ int main(void)
 				}
 				//==============================================================
 				
-				//Minute Output
+				//Start Minute Output
 				//==============================================================
 				if (StartTime[1] < 10)
 				{
@@ -394,7 +467,7 @@ int main(void)
 				}
 				//==============================================================
 				
-				//Second Output
+				//Start Second Output
 				//==============================================================
 				if (StartTime[0] < 10)
 				{
@@ -407,49 +480,109 @@ int main(void)
 					PlotString(buffer);
 				}
 				//==============================================================
-				if (T1)
-				{
-					StartTime[SetPos]++;
-				}
 				
-				else if (T2)
-				{
-					SetPos++;
-				}
-				
-				else if (T3)
+				//Inputs
+				//==============================================================
+				if (T1)	//Subtract from current Unit (Seconds, Minutes, Hours)
 				{
 					StartTime[SetPos]--;
 				}
 				
-				if (SetPos > 2)
+				else if (T2 && isPushed == 0)	//Next Unit (Seconds > Minutes > Hours)
+				{
+					isPushed = 1;
+					SetPos++;
+				}
+				
+				else if (T3)	//Add to current Unit (Seconds, Minutes, Hours)
+				{
+					StartTime[SetPos]++;
+				}
+				
+				else if (!(T1 || T2 || T3))	//Reset is Pushed
+				{
+					isPushed = 0;
+				}
+				//==============================================================
+				
+				//Variable limiting
+				//==============================================================
+				if (StartTime[0] > 59)	//Go back to 0 if Starting Seconds are greater than 59
+				{
+					StartTime[0] = 0;
+				}
+				
+				else if (StartTime[1] > 59)	//Go back to 0 if Starting Minutes are greater than 59
+				{
+					StartTime[1] = 0;
+				}
+				
+				else if (StartTime[2] > 24)	//Go back to 0 if Starting Hours are greater than 24
+				{
+					StartTime[2] = 0;
+				}
+				
+				if (SetPos > 2)	//change state to Countdown when next unit is pushed while setting Starting Hours
 				{
 					state = COUNTDOWN;
 				}
 				
 				break;
 			}
+			//==========================================================
 			
+			//Countdown Mode
+			//==========================================================
 			case COUNTDOWN:
 			{
+				//Draw Background
+				//======================================================
+				MoveTo(0, size);
+				for (count1 = 0; count1 != size; count1++)
+				{
+					for (count2 = 0; count2 != size; count2++)
+					{
+						fore = Colour(count2 * 8, 0, 0);
+						PlotPoint(count1, count2);
+					}
+				}
+				for (count1 = 0; count1 != 180; count1++)
+				{
+					DrawPointer(count1, 360, 40, BLACK, 0, BLACK, -1);
+					DrawPointer(360 - count1, 360, 40, BLACK, 0, BLACK, 1);
+				}
+				for (count1 = 15; count1 != 47; count1++)
+				{
+					fore = BLACK;
+					glcd_draw_circle(size / 2, size / 2, count1);
+				}
+				
+				for (count1 = 47; count1 != 42; count1--)
+				{
+					fore = Colour(180, 166, 166);
+					glcd_draw_circle(size / 2, size / 2, count1);
+				}
+				//======================================================
+				
+				//Reset Values
+				//======================================================
 				CountUp = 0;
 				second = StartTime[0];
 				minute = StartTime[1];
 				hour = StartTime[2];
 				
-				LastSec = StartTime[0];
-				LastMin = StartTime[1];
-				LastHour = StartTime[2];
-				
-				ClearDisplay();
-				while (!T3)
+				LastSec = StartTime[0] - 1;
+				LastMin = StartTime[1] - 1;
+				LastHour = StartTime[2] - 1;
+				//======================================================
+				while (state == COUNTDOWN)
 				{
-					if (T1)
+					if (hour == 0 && minute == 0 && second == 0)	//Check if Countdown has reached Zero and Pause if true;
 					{
-						state = COUNTDOWNSET;
-						SetPos = 0;
-						ClearDisplay();
+						IsPaused = 1;
 					}
+					
+					
 					fore = WHITE;
 					MoveTo(0,0);
 					//==============================================================
@@ -498,18 +631,43 @@ int main(void)
 					
 					//~ //Pointer Drawing
 					//~ //==============================================================
-					LastSec = DrawPointer(second, 60, 40, WHITE, 2, RED, second - LastSec);
-					LastMin = DrawPointer(minute, 60, 30, WHITE, 2, GREEN, minute - LastMin);
+					LastSec = DrawPointer(second, 59, 40, WHITE, 2, RED, second - LastSec);
+					LastMin = DrawPointer(minute, 59, 30, WHITE, 2, GREEN, minute - LastMin);
 					LastHour = DrawPointer(hour, 24, 20, WHITE, 2, BLUE, hour - LastHour);
+					//==================================================
+					
+					//Inputs
+					//==================================================
+					if (T1)
+					{
+						SetPos = 0;
+						StartTime[0] = 0;
+						StartTime[1] = 0;
+						StartTime[2] = 0;
+						ClearDisplay();
+						state = COUNTDOWNSET;
+						break;
+					}
+					else if (T2 && isPushed == 0)
+					{
+						isPushed = 1;
+						IsPaused = !IsPaused;
+					}
+					else if(!T2 && isPushed == 1)
+					{
+						isPushed = 0;
+					}
+					else if (T3)
+					{
+						state = CHOICE;
+					}
+					//==================================================
 				}
-				state = CHOICE;
 				break;
 			}
+			//==========================================================
 		}
 	}
-		
-		
-
 	  
 	for (;;)
 	{
@@ -517,69 +675,47 @@ int main(void)
 	}//end of for()
 }//end of main
 
-uint8_t DrawPointer (uint8_t Number, uint8_t SizeOfRotation, uint8_t Radius, int16_t Color, uint8_t TrailWidth, int16_t TrailColor, int8_t DiffToLast)
+uint8_t DrawPointer (uint16_t Number, uint16_t SizeOfRotation, uint8_t Radius, int16_t Color, uint8_t TrailWidth, int16_t TrailColor, int8_t DiffToLast)
 {
-	float radian;
+	double radian;
 	MoveTo(size / 2, size / 2);	//Move to the middle of the display
-	fore = Color;
-	radian = ((Number * (360 / SizeOfRotation)) + 90) * (M_PI / 180);	//calculate
-	DrawTo((size / 2) - cos(radian) * Radius, ((size / 2) + sin(radian) * Radius));
+	fore = Color;	//Set Color
+	radian = ((Number * (360 / SizeOfRotation)) + 90) * (M_PI / 180);	//calculate radiants for position calculation
+	DrawTo((size / 2) - cos(radian) * Radius, ((size / 2) + sin(radian) * Radius));	//Calculate end position of line and draw to it
 	
-	if(DiffToLast != 0)
+	if(DiffToLast != 0)	//Check if there is a difference to last line
 	{	
-		radian = (((Number - DiffToLast) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
-		MoveTo(size / 2, size / 2);
-		fore = BLACK;
-		DrawTo((size / 2) - cos(radian) * Radius, ((size / 2) + sin(radian) * Radius));
+		radian = (((Number - DiffToLast) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);	//calculate radiants of last line for position calculation
+		MoveTo(size / 2, size / 2);	//Move to the middle of the display
+		fore = BLACK;	//Set Color to Black
+		DrawTo((size / 2) - cos(radian) * Radius, ((size / 2) + sin(radian) * Radius));	//Calculate end position of last line and draw to it
 		
 		if (TrailWidth != 0)
 		{
-			radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
-			int8_t i;
-			int8_t j;
-			if (Number % SizeOfRotation != 0 || 1)
+			radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);	//calculate radiants for position calculation
+			int8_t i;	//Counting Variable used in the for loop which is responsible for the width of the trail
+			int8_t j;	//Counting used to indicate the current Angle
+			for (j = 0; j != SizeOfRotation; j++)	//Go through pointer Postions
 			{
-				for (j = 0; j != SizeOfRotation; j++)
+				for (i = 0 - floor(TrailWidth / 2); i != round(TrailWidth / 2); i++)	//Repeat to get width
 				{
-					for (i = 0 - floor(TrailWidth / 2); i != round(TrailWidth / 2); i++)
+					if (j <= Number)	//If the current angle is smaller than the pointer angle set fore to Trailcolor to draw trail
 					{
-						if (j <= Number)
-						{
-							fore = TrailColor;
-						}
-						else
-						{
-							fore = BLACK;
-						}
-						radian = (((j) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
-						MoveTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
-						radian = (((j - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
-						DrawTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
+						fore = TrailColor;
 					}
+					else 	//If the current angle is grater than the pointer angle set fore to Black to erase trail
+					{
+						fore = BLACK;
+					}
+					radian = (((j) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);	//calculate radiants for position calculation
+					MoveTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));	//Move to tip of pointer
+					radian = (((j - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);	//calculate radiants of last line for position calculation
+					DrawTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));	//Calculate end position of last line and draw to it
 				}
-					//~ radian = (((Number) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
-					//~ MoveTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
-					//~ radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
-					//~ DrawTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
 			}
 		}
-			
-			//~ else
-			//~ {
-				//~ fore = BLACK;
-				//~ for (Number = 0; Number != SizeOfRotation; Number++)
-				//~ {
-					//~ for (i = 0 - floor(TrailWidth / 2); i != round(TrailWidth / 2); i++)
-					//~ {
-						//~ radian = (((Number) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
-						//~ MoveTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
-						//~ radian = (((Number - 1) * round(360 / SizeOfRotation)) + 90) * (M_PI / 180);
-						//~ DrawTo((size / 2) - cos(radian) * (Radius + i), ((size / 2) + sin(radian) * (Radius + i)));
-					//~ }
-				//~ }
-			//~ }
 	}
-	return Number;
+	return Number;	//return number to be stored as last position
 }
 
 ISR (TIMER1_COMPA_vect)
