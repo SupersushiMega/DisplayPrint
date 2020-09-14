@@ -123,6 +123,14 @@ ISR (TIMER0_OVF_vect)
 }//End of ISR
 uint8_t DrawPointer (uint16_t Number, uint16_t SizeOfRotation, uint8_t Radius, int16_t Color, uint8_t TrailWidth, int16_t TrailColor, int8_t DiffToLast);
 
+void SPI_MasterTransmit(uint8_t cData)
+{/* Start transmission */
+	SPDR = cData;
+	/* Wait for transmission complete */
+	while(!(SPSR & (1<<SPIF)))
+	;
+}
+
 int main(void)
 {
 	DDRB |= (1<<DC) | (1<<CS) | (1<<MOSI) |( 1<<SCK); 	// All outputs
@@ -139,6 +147,12 @@ int main(void)
 		//Timer 1 Configuration
 	OCR1A = 1249;	//OCR1A = 0x3D08;==1sec
 	
+	//Init SPI		CLK/2
+	//==================================================================
+	SPCR |= (1<<SPE) | (1<<MSTR);
+	SPSR |= (1<<SPI2X);
+	//==================================================================
+		
     TCCR1B |= (1 << WGM12);
     // Mode 4, CTC on OCR1A
 
