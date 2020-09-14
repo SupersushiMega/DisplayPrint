@@ -67,12 +67,13 @@ const uint8_t size = 128;
 ISR (TIMER1_COMPA_vect);
 
 volatile uint8_t ISR_zaehler = 0;
-volatile uint8_t ms = 0;
+volatile uint8_t ms100 = 0;
 volatile uint8_t second = 0;
 volatile uint8_t minute = 0;
 volatile uint8_t hour = 0;
 volatile uint8_t CountUp = 1;
 volatile int8_t IsPaused = 0;
+volatile uint16_t BenchmarkMS100 = 0;
 ISR (TIMER0_OVF_vect)
 {
 	if (IsPaused == 0)
@@ -81,32 +82,30 @@ ISR (TIMER0_OVF_vect)
 		ISR_zaehler++;
 		if(ISR_zaehler == 12)
 		{
-			ms++;
+			ms100++;
+			BenchmarkMS100++;
 			ISR_zaehler = 0;
-			if (ms == 10)
+			if (ms100 == 10)
 			{
 				if (CountUp == 1)
 				{
-					if (ms == 10)
+					second ++;
+					ms100 = 0;
+					if (second == 60)
 					{
-						second ++;
-						ms = 0;
-						if (second == 60)
+						minute ++;
+						second = 0;
+						if (minute == 60)
 						{
-							minute ++;
-							second = 0;
-							if (minute == 60)
-							{
-								hour ++;
-								minute = 0;
-							}
+							hour ++;
+							minute = 0;
 						}
 					}
 				}
 				else
 				{
 					second --;
-					ms = 0;
+					ms100 = 0;
 					if (second == 255)
 					{
 						minute --;
@@ -172,7 +171,7 @@ int main(void)
 	sei();
 	//==================================================================
 	
-	enum {START, CHOICE, TIMER, COUNTDOWNSET, COUNTDOWN};
+	enum {START, CHOICE, TIMER, COUNTDOWNSET, COUNTDOWN, TIMETEST};
 	
 	uint8_t state = START;
 	
@@ -262,7 +261,7 @@ int main(void)
 						case 2:
 						{
 							MoveTo(BoxSize + 2, count1);
-							PlotString("Back");
+							PlotString("Benchmark");
 							fore = YELLOW;
 							break;
 						}
@@ -292,7 +291,7 @@ int main(void)
 					
 					else if(T3)
 					{
-						state = START;
+						state = TIMETEST;
 					}
 				}
 				break;
@@ -666,6 +665,36 @@ int main(void)
 				break;
 			}
 			//==========================================================
+			case TIMETEST:
+			{
+				//Reset Values
+				//======================================================
+				IsPaused = 0;
+				CountUp = 1;
+				BenchmarkMS100 = 0;
+				//======================================================
+				
+				for (count1 = 0; count1 <= (2 * (size / 3)); count1 += (size / 3))
+				{
+					for (count2 = 0; count2 <= (2 * (size / 3)); count2 += (size / 3))
+					{
+						fore = Colour(rand(), rand(), rand());
+						MoveTo(count1, count2);
+						FillRect(size / 3, size / 3);
+					}
+				}
+				fore = WHITE;
+				MoveTo(0,0);
+				//==============================================================
+				
+				//ms Output
+				//==============================================================
+				sprintf(buffer, "%d00ms", BenchmarkMS100);
+				PlotString(buffer);
+				//==============================================================
+				while(!T3);
+				state = CHOICE;
+			}
 		}
 	}
 	  
